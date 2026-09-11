@@ -126,7 +126,7 @@ arquivo = gerar_cnab240(
     data_geracao=datetime(2026, 9, 11, 17, 30, 0),
 )
 
-nome = "REMESSA_TESTE_BRADESCO_11-09-2026_v3.rem"
+nome = "REMESSA_TESTE_BRADESCO_11-09-2026_v4.rem"
 with open(nome, "w", encoding="latin-1", newline="") as f:
     f.write(arquivo)
 

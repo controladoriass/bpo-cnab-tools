@@ -493,6 +493,79 @@ def monta_segmento_b_pix(
     return _assert_line(linha, f"segmento B (PIX) lote {lote} seq {seq}")
 
 
+def monta_segmento_j_pix(
+    lote: int,
+    seq: int,
+    despesa: dict,
+) -> str:
+    """Segmento J para PIX (obrigatorio junto com A e B).
+
+    Diferente do J de boleto: nao tem codigo de barras real, e formato adaptado.
+    Ver manual pag 41.
+    """
+    partes = [
+        BANCO_BRADESCO,                                    # 1-3
+        num(lote, 4),                                      # 4-7
+        "3",                                               # 8 tipo registro
+        num(seq, 5),                                       # 9-13
+        "J",                                               # 14 segmento
+        "0",                                               # 15 tipo movimento
+        "00",                                              # 16-17 codigo instrucao
+        zeros(44),                                         # 18-61 codigo barras (zeros pra PIX)
+        alfa(despesa["favorecido"], 30),                   # 62-91 nome beneficiario
+        data_ddmmaaaa(despesa["data_pagamento"]),          # 92-99 data vencimento
+        valor_centavos(despesa["valor_pagamento"], 15),    # 100-114 valor titulo
+        zeros(15),                                         # 115-129 desconto
+        zeros(15),                                         # 130-144 mora
+        data_ddmmaaaa(despesa["data_pagamento"]),          # 145-152 data pagamento
+        valor_centavos(despesa["valor_pagamento"], 15),    # 153-167 valor pagamento
+        zeros(15),                                         # 168-182 quantidade moeda
+        alfa(despesa.get("seu_numero", ""), 20),           # 183-202 referencia
+        brancos(20),                                       # 203-222 nosso numero (retorno)
+        "09",                                              # 223-224 moeda BRL
+        brancos(6),                                        # 225-230
+        brancos(10),                                       # 231-240 ocorrencias
+    ]
+    linha = "".join(partes)
+    return _assert_line(linha, f"segmento J (PIX) lote {lote} seq {seq}")
+
+
+def monta_segmento_j52_pix(
+    lote: int,
+    seq: int,
+    despesa: dict,
+    empresa: dict,
+) -> str:
+    """Segmento J-52 para PIX (obrigatorio).
+
+    Contem chave PIX (pos 132-210, 79 chars) e TX ID (pos 211-240, 30 chars).
+    Ver manual pag 42.
+    """
+    tipo_inscricao_fav = despesa.get("tipo_inscricao_favorecido", 2)
+    doc_fav = despesa.get("cnpj_favorecido") or despesa.get("cpf_favorecido") or "0"
+
+    partes = [
+        BANCO_BRADESCO,                                    # 1-3
+        num(lote, 4),                                      # 4-7
+        "3",                                               # 8 tipo registro
+        num(seq, 5),                                       # 9-13
+        "J",                                               # 14 segmento
+        brancos(1),                                        # 15 uso febraban
+        "00",                                              # 16-17 codigo movimento
+        "52",                                              # 18-19 identificacao registro
+        "2",                                               # 20 tipo inscricao devedor (empresa=CNPJ)
+        num(empresa["cnpj"], 15),                          # 21-35
+        alfa(empresa["nome_reduzido"], 40),                # 36-75
+        num(tipo_inscricao_fav, 1),                        # 76 tipo inscricao favorecido
+        num(doc_fav, 15),                                  # 77-91
+        alfa(despesa["favorecido"], 40),                   # 92-131
+        alfa(despesa.get("chave_pix", ""), 79),            # 132-210 chave/URL
+        alfa(despesa.get("tx_id", ""), 30),                # 211-240 TX ID
+    ]
+    linha = "".join(partes)
+    return _assert_line(linha, f"segmento J-52 (PIX) lote {lote} seq {seq}")
+
+
 def monta_trailer_lote(
     lote: int,
     qtd_registros: int,
@@ -567,9 +640,9 @@ def gerar_lote_boletos(empresa: dict, lote: int, despesas: list) -> tuple:
 
 
 def gerar_lote_pix(empresa: dict, lote: int, despesas: list) -> tuple:
-    """Gera todas as linhas de um lote de pagamentos PIX (transferencia).
+    """Gera todas as linhas de um lote de pagamentos PIX.
 
-    Cada despesa PIX vira: Segmento A + Segmento B.
+    Manual pag 12: PIX exige 4 segmentos por despesa: A + B + J + J-52.
     """
     linhas = []
     linhas.append(monta_header_lote(
@@ -586,9 +659,14 @@ def gerar_lote_pix(empresa: dict, lote: int, despesas: list) -> tuple:
         linhas.append(monta_segmento_a(lote, seq, d, is_pix=True))
         seq += 1
         linhas.append(monta_segmento_b_pix(lote, seq, d))
+        seq += 1
+        linhas.append(monta_segmento_j_pix(lote, seq, d))
+        seq += 1
+        linhas.append(monta_segmento_j52_pix(lote, seq, d, empresa))
         soma += float(d["valor_pagamento"])
 
-    qtd_registros = 2 + (2 * len(despesas))
+    # 1 header + 4 detalhes por despesa + 1 trailer
+    qtd_registros = 2 + (4 * len(despesas))
     linhas.append(monta_trailer_lote(lote, qtd_registros, soma))
     return linhas, qtd_registros, soma
 
