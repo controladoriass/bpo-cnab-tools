@@ -339,8 +339,10 @@ def monta_segmento_a(
         cnpj_fav = despesa.get("cnpj_favorecido") or despesa.get("cpf_favorecido") or "0"
         ispb = despesa.get("ispb_favorecido", "00000000")
         tipo_conta = despesa.get("tipo_conta_favorecido", "01")
+        # Formato G031 pra PIX: CCCCCCCCCCCCCC IIIIIIII RR + 16 zeros finais
         info2 = f"{num(cnpj_fav, 14)}{num(ispb, 8)}{tipo_conta}"
-        info2 = alfa(info2, 40)
+        # completa com zeros ao final ate 40 chars (em vez de brancos)
+        info2 = (info2 + "0" * 40)[:40]
     else:
         info2 = alfa(despesa.get("mensagem", ""), 40)
 
