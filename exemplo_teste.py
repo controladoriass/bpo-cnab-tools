@@ -101,7 +101,12 @@ ted = {
 }
 
 # ========== GERAR ==========
-despesas = [boleto_real, pix_chave_cnpj, ted]
+# PIX removido do teste porque o convenio placeholder 99999... nao tem PIX
+# habilitado. Todos os erros que sobravam do PIX (agencia, DV, campo SIAPE)
+# estao dentro do lote "Modalidade 45 nao localizada" - o Multipag nao valida
+# o miolo. Quando o convenio real com PIX for contratado, reincluir aqui:
+# despesas = [boleto_real, pix_chave_cnpj, ted]
+despesas = [boleto_real, ted]
 
 arquivo = gerar_cnab240(
     despesas=despesas,
@@ -110,7 +115,7 @@ arquivo = gerar_cnab240(
     data_geracao=datetime(2026, 9, 11, 18, 0, 0),
 )
 
-nome = "REMESSA_TESTE_BRADESCO_11-09-2026_v11.rem"
+nome = "REMESSA_TESTE_BRADESCO_11-09-2026_v12.rem"
 with open(nome, "w", encoding="latin-1", newline="") as f:
     f.write(arquivo)
 
