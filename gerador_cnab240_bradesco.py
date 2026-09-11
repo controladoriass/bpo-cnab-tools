@@ -357,11 +357,15 @@ def monta_segmento_a(
     agencia_fav = despesa.get("agencia_favorecido") or (
         despesa.get("_empresa_agencia") if is_pix else "0"
     ) or "0"
-    agencia_dv_fav = despesa.get("agencia_dv_favorecido", "")
+    agencia_dv_fav = despesa.get("agencia_dv_favorecido") or (
+        despesa.get("_empresa_agencia_dv", "") if is_pix else ""
+    ) or ""
     conta_fav = despesa.get("conta_favorecido") or (
         despesa.get("_empresa_conta") if is_pix else "0"
     ) or "0"
-    conta_dv_fav = despesa.get("conta_dv_favorecido", "")
+    conta_dv_fav = despesa.get("conta_dv_favorecido") or (
+        despesa.get("_empresa_conta_dv", "") if is_pix else ""
+    ) or ""
 
     partes = [
         BANCO_BRADESCO,                                    # 1-3
@@ -673,7 +677,13 @@ def gerar_lote_pix(empresa: dict, lote: int, despesas: list) -> tuple:
         # injeta dados da empresa nas despesas PIX pra preencher agencia/conta
         # no segmento A (o Bradesco exige valores nao-zero mesmo quando pagamento
         # e por chave).
-        d = {**d, "_empresa_agencia": empresa["agencia"], "_empresa_conta": empresa["conta"]}
+        d = {
+            **d,
+            "_empresa_agencia": empresa["agencia"],
+            "_empresa_agencia_dv": empresa.get("agencia_dv", ""),
+            "_empresa_conta": empresa["conta"],
+            "_empresa_conta_dv": empresa.get("conta_dv", ""),
+        }
         seq += 1
         linhas.append(monta_segmento_a(lote, seq, d, is_pix=True))
         seq += 1
