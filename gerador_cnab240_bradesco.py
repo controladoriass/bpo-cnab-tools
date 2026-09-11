@@ -320,7 +320,10 @@ def monta_segmento_a(
     Caso contrario, e credito em conta Bradesco.
     """
     if is_pix:
-        camara = "009"                 # 009 = SPI (Sistema de Pagamentos Instantaneos, PIX)
+        # PIX nao usa camara centralizadora explicita.
+        # O manual so documenta 018 (TED/CIP) e 888 (TED via ISPB).
+        # Bradesco espera zeros aqui pra PIX.
+        camara = "000"
         finalidade_ted = brancos(5)    # PIX nao usa finalidade TED
     elif is_ted:
         camara = CAMARA_TED            # 018
