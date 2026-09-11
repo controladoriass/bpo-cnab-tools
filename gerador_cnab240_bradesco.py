@@ -344,16 +344,23 @@ def monta_segmento_a(
     else:
         info2 = alfa(despesa.get("mensagem", ""), 40)
 
-    # Banco do favorecido: pra PIX por chave, quando nao ha dados bancarios,
-    # o Bradesco espera receber 237 (o proprio banco pagador) e o roteamento
-    # e feito pelo Bacen com base na chave.
+    # Pra PIX por chave, quando nao ha dados bancarios explicitos,
+    # o Bradesco espera receber os dados da propria empresa pagadora nos
+    # campos de agencia/conta (o roteamento e resolvido pelo Bacen atraves
+    # da chave PIX).
     if is_pix and not despesa.get("banco_favorecido"):
         banco_fav = BANCO_BRADESCO
     else:
         banco_fav = despesa.get("banco_favorecido", "0")
-    agencia_fav = despesa.get("agencia_favorecido", "0")
+
+    # Placeholder pra receber empresa quando is_pix (setado no monta_segmento_a via arg)
+    agencia_fav = despesa.get("agencia_favorecido") or (
+        despesa.get("_empresa_agencia") if is_pix else "0"
+    ) or "0"
     agencia_dv_fav = despesa.get("agencia_dv_favorecido", "")
-    conta_fav = despesa.get("conta_favorecido", "0")
+    conta_fav = despesa.get("conta_favorecido") or (
+        despesa.get("_empresa_conta") if is_pix else "0"
+    ) or "0"
     conta_dv_fav = despesa.get("conta_dv_favorecido", "")
 
     partes = [
@@ -663,6 +670,10 @@ def gerar_lote_pix(empresa: dict, lote: int, despesas: list) -> tuple:
     seq = 0
     soma = 0.0
     for d in despesas:
+        # injeta dados da empresa nas despesas PIX pra preencher agencia/conta
+        # no segmento A (o Bradesco exige valores nao-zero mesmo quando pagamento
+        # e por chave).
+        d = {**d, "_empresa_agencia": empresa["agencia"], "_empresa_conta": empresa["conta"]}
         seq += 1
         linhas.append(monta_segmento_a(lote, seq, d, is_pix=True))
         seq += 1
