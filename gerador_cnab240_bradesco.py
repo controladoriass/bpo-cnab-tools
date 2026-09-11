@@ -443,7 +443,9 @@ def gerar_cnab240(
     qtd_registros_total = len(linhas) + 1  # +1 do trailer que vamos adicionar
     linhas.append(monta_trailer_arquivo(qtd_lotes, qtd_registros_total))
 
-    return "\n".join(linhas) + "\n"
+    # Bradesco exige CRLF ao final de cada linha (Windows line endings).
+    # Sem isso o Multipag reclama "delimitador (finalizador) de linhas nao localizado".
+    return "\r\n".join(linhas) + "\r\n"
 
 
 # =====================================================================

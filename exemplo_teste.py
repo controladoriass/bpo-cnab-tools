@@ -83,8 +83,8 @@ arquivo = gerar_cnab240(
 )
 
 nome = "REMESSA_TESTE_BRADESCO_11-09-2026.rem"
+# newline="" pra Python nao substituir os \r\n que o gerador ja coloca
 with open(nome, "w", encoding="latin-1", newline="") as f:
-    # CNAB tradicionalmente usa \r\n mas o Bradesco aceita \n
     f.write(arquivo)
 
 print(f"Arquivo gerado: {nome}")
@@ -92,7 +92,8 @@ print(f"Total linhas: {arquivo.count(chr(10))}")
 print(f"Total bytes: {len(arquivo.encode('latin-1'))}")
 print()
 print("=== Preview das linhas ===")
-linhas = [l for l in arquivo.split("\n") if l]  # ignora linha vazia final
+# arquivo termina cada linha com \r\n, entao splitlines() da a lista limpa
+linhas = arquivo.splitlines()
 for i, linha in enumerate(linhas, 1):
     tipo = linha[7]
     seg = linha[13] if len(linha) > 13 else ""
