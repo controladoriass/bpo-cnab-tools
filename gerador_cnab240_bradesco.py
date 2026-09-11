@@ -306,6 +306,193 @@ def monta_segmento_j52(
     return _assert_line(linha, f"segmento J-52 lote {lote} seq {seq}")
 
 
+def monta_segmento_a(
+    lote: int,
+    seq: int,
+    despesa: dict,
+    is_pix: bool = False,
+    is_ted: bool = False,
+) -> str:
+    """Segmento A: usado para PIX, TED e Credito em Conta.
+
+    is_pix: se True, ajusta camara e finalidade pra PIX.
+    is_ted: se True, ajusta camara e finalidade pra TED.
+    Caso contrario, e credito em conta Bradesco.
+    """
+    if is_pix:
+        camara = "000"                 # PIX nao usa camara
+        finalidade_ted = brancos(5)    # PIX nao usa finalidade TED
+    elif is_ted:
+        camara = CAMARA_TED            # 018
+        finalidade_ted = despesa.get("finalidade_ted", FINALIDADE_PAG_FORNECEDOR)
+    else:
+        camara = CAMARA_CREDITO_CONTA  # 000
+        finalidade_ted = brancos(5)
+
+    # Informacao 2 (pos 178-217): 40 chars
+    # Para PIX, formato especial documentado em G031:
+    # CCCCCCCCCCCCCC IIIIIIII RR  onde C=CNPJ 14, I=ISPB 8, R=tipo conta 2
+    if is_pix:
+        cnpj_fav = despesa.get("cnpj_favorecido") or despesa.get("cpf_favorecido") or "0"
+        ispb = despesa.get("ispb_favorecido", "00000000")
+        tipo_conta = despesa.get("tipo_conta_favorecido", "01")
+        info2 = f"{num(cnpj_fav, 14)}{num(ispb, 8)}{tipo_conta}"
+        info2 = alfa(info2, 40)
+    else:
+        info2 = alfa(despesa.get("mensagem", ""), 40)
+
+    # Tipo de conta / DV para PIX (dados bancarios) - ainda usa banco/agencia/conta se der
+    banco_fav = despesa.get("banco_favorecido", "0")
+    agencia_fav = despesa.get("agencia_favorecido", "0")
+    agencia_dv_fav = despesa.get("agencia_dv_favorecido", "")
+    conta_fav = despesa.get("conta_favorecido", "0")
+    conta_dv_fav = despesa.get("conta_dv_favorecido", "")
+
+    partes = [
+        BANCO_BRADESCO,                                    # 1-3
+        num(lote, 4),                                      # 4-7
+        "3",                                               # 8 tipo registro
+        num(seq, 5),                                       # 9-13
+        "A",                                               # 14 segmento
+        "0",                                               # 15 tipo movimento (inclusao)
+        "00",                                              # 16-17 codigo instrucao
+        num(camara, 3),                                    # 18-20 camara centralizadora
+        num(banco_fav, 3),                                 # 21-23 banco favorecido
+        num(agencia_fav, 5),                               # 24-28 agencia favorecido
+        alfa(agencia_dv_fav, 1),                           # 29 dv agencia
+        num(conta_fav, 12),                                # 30-41 conta favorecido
+        alfa(conta_dv_fav, 1),                             # 42 dv conta
+        brancos(1),                                        # 43 dv ag/conta
+        alfa(despesa["favorecido"], 30),                   # 44-73 nome favorecido
+        alfa(despesa.get("seu_numero", ""), 20),           # 74-93 seu numero
+        data_ddmmaaaa(despesa["data_pagamento"]),          # 94-101 data pagamento
+        alfa("BRL", 3),                                    # 102-104 moeda
+        zeros(15),                                         # 105-119 quantidade moeda
+        valor_centavos(despesa["valor_pagamento"], 15),    # 120-134 valor pagamento
+        brancos(20),                                       # 135-154 nosso numero (retorno)
+        zeros(8),                                          # 155-162 data real (retorno)
+        zeros(15),                                         # 163-177 valor real (retorno)
+        info2,                                             # 178-217 informacao 2
+        brancos(2),                                        # 218-219 uso febraban
+        alfa(finalidade_ted, 5),                           # 220-224 finalidade TED
+        brancos(2),                                        # 225-226 finalidade complementar
+        brancos(3),                                        # 227-229 uso febraban
+        "0",                                               # 230 aviso favorecido
+        brancos(10),                                       # 231-240 ocorrencias
+    ]
+    linha = "".join(partes)
+    return _assert_line(linha, f"segmento A lote {lote} seq {seq}")
+
+
+def monta_segmento_b_ted(
+    lote: int,
+    seq: int,
+    despesa: dict,
+) -> str:
+    """Segmento B para TED / credito em conta (nao-PIX).
+
+    Contem CNPJ/CPF do favorecido e endereco.
+    """
+    tipo_inscricao_fav = despesa.get("tipo_inscricao_favorecido", 2)  # 1=CPF, 2=CNPJ
+    doc_fav = despesa.get("cnpj_favorecido") or despesa.get("cpf_favorecido") or "0"
+    endereco = despesa.get("endereco_favorecido", {})
+
+    partes = [
+        BANCO_BRADESCO,                                    # 1-3
+        num(lote, 4),                                      # 4-7
+        "3",                                               # 8 tipo registro
+        num(seq, 5),                                       # 9-13
+        "B",                                               # 14 segmento
+        brancos(3),                                        # 15-17 uso febraban
+        num(tipo_inscricao_fav, 1),                        # 18 tipo inscricao
+        num(doc_fav, 14),                                  # 19-32 cnpj/cpf
+        alfa(endereco.get("logradouro", ""), 30),          # 33-62 logradouro
+        num(endereco.get("numero", 0), 5),                 # 63-67 numero
+        alfa(endereco.get("complemento", ""), 15),         # 68-82 complemento
+        alfa(endereco.get("bairro", ""), 15),              # 83-97 bairro
+        alfa(endereco.get("cidade", ""), 20),              # 98-117 cidade
+        num(endereco.get("cep", 0), 5),                    # 118-122 CEP
+        alfa(endereco.get("cep_sufixo", ""), 3),           # 123-125 sufixo CEP
+        alfa(endereco.get("uf", ""), 2),                   # 126-127 estado
+        data_ddmmaaaa(despesa.get("data_vencimento")),     # 128-135 vencimento
+        valor_centavos(despesa.get("valor_documento", despesa["valor_pagamento"]), 15),  # 136-150
+        zeros(15),                                         # 151-165 abatimento
+        zeros(15),                                         # 166-180 desconto
+        zeros(15),                                         # 181-195 mora
+        zeros(15),                                         # 196-210 multa
+        alfa(despesa.get("cod_favorecido", ""), 15),       # 211-225 cod favorecido
+        "0",                                               # 226 aviso
+        zeros(6),                                          # 227-232 UG SIAPE
+        num(despesa.get("ispb_favorecido", 0), 8),         # 233-240 ISPB
+    ]
+    linha = "".join(partes)
+    return _assert_line(linha, f"segmento B (TED) lote {lote} seq {seq}")
+
+
+def monta_segmento_b_pix(
+    lote: int,
+    seq: int,
+    despesa: dict,
+) -> str:
+    """Segmento B para PIX.
+
+    Estrutura diferente: forma de iniciacao + chave PIX distribuida
+    entre Informacao 10, 11 e 12.
+
+    despesa deve conter:
+      tipo_chave_pix: 'telefone' | 'email' | 'cpf_cnpj' | 'aleatoria' | 'dados_bancarios'
+      chave_pix: string com a chave (ou None se dados_bancarios)
+      tx_id: opcional (id da transacao)
+      identificacao_pagamento: opcional (info entre usuarios)
+    """
+    tipo_chave = despesa.get("tipo_chave_pix", "cpf_cnpj")
+    mapa_g100 = {
+        "telefone": "01",
+        "email": "02",
+        "cpf_cnpj": "03",
+        "aleatoria": "04",
+        "dados_bancarios": "05",
+    }
+    g100_codigo = mapa_g100.get(tipo_chave, "03")
+    # G100 usa 3 posicoes (o codigo + 1 espaco)
+    forma_iniciacao = g100_codigo + " "
+
+    tipo_inscricao_fav = despesa.get("tipo_inscricao_favorecido", 2)
+    doc_fav = despesa.get("cnpj_favorecido") or despesa.get("cpf_favorecido") or "0"
+
+    tx_id = alfa(despesa.get("tx_id", ""), 35)                  # informacao 10: 33-67 (35 chars)
+    id_pagamento = alfa(despesa.get("identificacao_pagamento", ""), 60)  # info 11: 68-127 (60 chars)
+
+    # Informacao 12: 128-226 (99 chars)
+    if tipo_chave == "dados_bancarios":
+        # tipo de conta nas 2 primeiras posicoes: 01/02/03
+        tipo_conta = despesa.get("tipo_conta_favorecido", "01")
+        info12_raw = tipo_conta + " " * 97
+    else:
+        # chave PIX nas 99 posicoes
+        chave = despesa.get("chave_pix", "")
+        info12_raw = alfa(chave, 99)
+    info12 = info12_raw[:99]
+
+    partes = [
+        BANCO_BRADESCO,                                    # 1-3
+        num(lote, 4),                                      # 4-7
+        "3",                                               # 8 tipo registro
+        num(seq, 5),                                       # 9-13
+        "B",                                               # 14 segmento
+        forma_iniciacao,                                   # 15-17 forma iniciacao (G100)
+        num(tipo_inscricao_fav, 1),                        # 18 tipo inscricao
+        num(doc_fav, 14),                                  # 19-32 cnpj/cpf
+        tx_id,                                             # 33-67 informacao 10 (TX ID)
+        id_pagamento,                                      # 68-127 informacao 11
+        info12,                                            # 128-226 informacao 12 (chave)
+        zeros(6),                                          # 227-232 UG SIAPE (manual diz 7 mas 227-232 sao 6 pos; matematica manda)
+        num(despesa.get("ispb_favorecido", 0), 8),         # 233-240 ISPB
+    ]
+    linha = "".join(partes)
+    return _assert_line(linha, f"segmento B (PIX) lote {lote} seq {seq}")
+
+
 def monta_trailer_lote(
     lote: int,
     qtd_registros: int,
@@ -379,6 +566,60 @@ def gerar_lote_boletos(empresa: dict, lote: int, despesas: list) -> tuple:
     return linhas, qtd_registros, soma
 
 
+def gerar_lote_pix(empresa: dict, lote: int, despesas: list) -> tuple:
+    """Gera todas as linhas de um lote de pagamentos PIX (transferencia).
+
+    Cada despesa PIX vira: Segmento A + Segmento B.
+    """
+    linhas = []
+    linhas.append(monta_header_lote(
+        empresa=empresa,
+        lote=lote,
+        forma_lancamento=FORMA_PIX_TRANSFERENCIA,
+        layout_lote=LAYOUT_LOTE_PAGAMENTO,
+    ))
+
+    seq = 0
+    soma = 0.0
+    for d in despesas:
+        seq += 1
+        linhas.append(monta_segmento_a(lote, seq, d, is_pix=True))
+        seq += 1
+        linhas.append(monta_segmento_b_pix(lote, seq, d))
+        soma += float(d["valor_pagamento"])
+
+    qtd_registros = 2 + (2 * len(despesas))
+    linhas.append(monta_trailer_lote(lote, qtd_registros, soma))
+    return linhas, qtd_registros, soma
+
+
+def gerar_lote_ted(empresa: dict, lote: int, despesas: list) -> tuple:
+    """Gera todas as linhas de um lote de pagamentos TED.
+
+    Cada despesa TED vira: Segmento A + Segmento B.
+    """
+    linhas = []
+    linhas.append(monta_header_lote(
+        empresa=empresa,
+        lote=lote,
+        forma_lancamento=FORMA_TED_OUTRA_TITULARIDADE,
+        layout_lote=LAYOUT_LOTE_PAGAMENTO,
+    ))
+
+    seq = 0
+    soma = 0.0
+    for d in despesas:
+        seq += 1
+        linhas.append(monta_segmento_a(lote, seq, d, is_ted=True))
+        seq += 1
+        linhas.append(monta_segmento_b_ted(lote, seq, d))
+        soma += float(d["valor_pagamento"])
+
+    qtd_registros = 2 + (2 * len(despesas))
+    linhas.append(monta_trailer_lote(lote, qtd_registros, soma))
+    return linhas, qtd_registros, soma
+
+
 def gerar_cnab240(
     despesas: list,
     empresa: dict,
@@ -431,11 +672,17 @@ def gerar_cnab240(
         lote_linhas, _, _ = gerar_lote_boletos(empresa, lote, boletos)
         linhas.extend(lote_linhas)
 
-    # PIX e TED: implementar nas proximas iteracoes
     if pix:
-        raise NotImplementedError("Lote de PIX ainda nao implementado (proxima iteracao).")
+        lote += 1
+        qtd_lotes += 1
+        lote_linhas, _, _ = gerar_lote_pix(empresa, lote, pix)
+        linhas.extend(lote_linhas)
+
     if ted:
-        raise NotImplementedError("Lote de TED ainda nao implementado (proxima iteracao).")
+        lote += 1
+        qtd_lotes += 1
+        lote_linhas, _, _ = gerar_lote_ted(empresa, lote, ted)
+        linhas.extend(lote_linhas)
 
     # trailer do arquivo
     # qtd_registros = header arquivo (1) + todas linhas de lotes + trailer arquivo (1)
