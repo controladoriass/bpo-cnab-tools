@@ -82,7 +82,7 @@ arquivo = gerar_cnab240(
     data_geracao=datetime(2026, 9, 11, 14, 30, 0),
 )
 
-nome = "REMESSA_TESTE_BRADESCO_11-09-2026.rem"
+nome = "REMESSA_TESTE_BRADESCO_11-09-2026_v2.rem"
 # newline="" pra Python nao substituir os \r\n que o gerador ja coloca
 with open(nome, "w", encoding="latin-1", newline="") as f:
     f.write(arquivo)
