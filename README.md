@@ -4,12 +4,23 @@ Ferramentas de geração e leitura de arquivos CNAB 240 (remessa e retorno) do B
 
 ## Status
 
-**Em espera.** Aguardando Bradesco liberar módulo CNAB 240 e entregar o layout técnico oficial (Manual Técnico CNAB 240 v084 Bradesco). Sem o manual, o gerador fica genérico e sujeito a rejeição no banco.
+**Manual técnico oficial recebido (Bradesco v08, jul/2025).**
+**Gerador Python implementado e validado no Multipag.** Faltando apenas o convênio real de Multipag do Bradesco pra passar em produção.
 
-Quando o manual chegar:
-- `gerador_cnab240_bradesco.py`, gera arquivo `.rem` de remessa
-- `leitor_retorno_cnab240_bradesco.py`, lê arquivo `.ret` de retorno
-- `gerador_cnab240_sicredi.py`, quando Sicredi liberar
+### O que já está pronto (validado pelo Multipag)
+
+- Estrutura CNAB 240 (240 chars por linha, CRLF, Header/Trailer)
+- Header e Trailer do arquivo
+- Header e Trailer de lote (com somatórias corretas)
+- **Boleto:** Segmento J + J-52 (estrutura OK, aguarda boleto real recente)
+- **PIX Transferência:** Segmento A + B + J + J-52 (estrutura OK, aguarda convênio com PIX habilitado)
+- **TED:** Segmento A + B (estrutura OK, reconhecida pelo Multipag)
+
+### O que falta pra rodar em produção
+
+1. **Convênio de pagamento do Bradesco** (20 posições) — trocar em `exemplo_teste.py` variável `convenio`. Fornecido pelo gerente ou visível no Bradesco Net Empresa > Multipag.
+2. **Habilitação do PIX no convênio** — PIX é essencial pro BPO (folha de salário). Sem PIX habilitado, o Multipag rejeita o lote com "Modalidade 45 não localizada".
+3. **Ambiente de homologação** (opcional) — pra testar arquivo com dados reais sem processar pagamento.
 
 ## Uso previsto
 

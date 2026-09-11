@@ -332,18 +332,18 @@ def monta_segmento_a(
         camara = CAMARA_CREDITO_CONTA  # 000
         finalidade_ted = brancos(5)
 
-    # Informacao 2 (pos 178-217): 40 chars
-    # Para PIX, formato especial documentado em G031:
-    # CCCCCCCCCCCCCC IIIIIIII RR  onde C=CNPJ 14, I=ISPB 8, R=tipo conta 2
+    # Informacao 2 (pos 178-217): 40 chars.
+    # Manual G031 diz que este campo tem formatacao especial pra SIAPE, deposito
+    # judicial e PIX. Pra pagamento a fornecedor normal (TED/credito), deve
+    # ficar em BRANCO. Pra PIX, formato: CCCCCCCCCCCCCC IIIIIIII RR
     if is_pix:
         cnpj_fav = despesa.get("cnpj_favorecido") or despesa.get("cpf_favorecido") or "0"
         ispb = despesa.get("ispb_favorecido", "00000000")
         tipo_conta = despesa.get("tipo_conta_favorecido", "01")
-        # Formato G031 pra PIX: CCCCCCCCCCCCCC IIIIIIII RR + 16 zeros finais
         info2 = f"{num(cnpj_fav, 14)}{num(ispb, 8)}{tipo_conta}"
-        # completa com zeros ao final ate 40 chars (em vez de brancos)
-        info2 = (info2 + "0" * 40)[:40]
+        info2 = (info2 + " " * 40)[:40]
     else:
+        # TED/credito: deixa em branco (mensagem opcional so aparece se explicita)
         info2 = alfa(despesa.get("mensagem", ""), 40)
 
     # Pra PIX por chave, quando nao ha dados bancarios explicitos,
@@ -396,7 +396,9 @@ def monta_segmento_a(
         info2,                                             # 178-217 informacao 2
         brancos(2),                                        # 218-219 uso febraban
         alfa(finalidade_ted, 5),                           # 220-224 finalidade TED
-        brancos(2),                                        # 225-226 finalidade complementar
+        # Finalidade complementar (P013): pra TED, CC=conta corrente,
+        # PP=poupanca. Pra PIX/credito, brancos.
+        alfa(despesa.get("finalidade_complementar", "CC" if is_ted else ""), 2),  # 225-226
         brancos(3),                                        # 227-229 uso febraban
         "0",                                               # 230 aviso favorecido
         brancos(10),                                       # 231-240 ocorrencias
@@ -435,7 +437,9 @@ def monta_segmento_b_ted(
         num(endereco.get("cep", 0), 5),                    # 118-122 CEP
         alfa(endereco.get("cep_sufixo", ""), 3),           # 123-125 sufixo CEP
         alfa(endereco.get("uf", ""), 2),                   # 126-127 estado
-        data_ddmmaaaa(despesa.get("data_vencimento")),     # 128-135 vencimento
+        # Data de vencimento: se nao informada, usa data de pagamento
+        # (Bradesco exige data preenchida no Segmento B do TED)
+        data_ddmmaaaa(despesa.get("data_vencimento") or despesa["data_pagamento"]),  # 128-135
         valor_centavos(despesa.get("valor_documento", despesa["valor_pagamento"]), 15),  # 136-150
         zeros(15),                                         # 151-165 abatimento
         zeros(15),                                         # 166-180 desconto
