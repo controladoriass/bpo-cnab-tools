@@ -1,113 +1,114 @@
-"""Gera arquivo .rem de teste com Boleto + PIX + TED pra rodar no Multipag."""
+"""Gera arquivo .rem de teste com dados REAIS da Silva & Silva Advogados.
+
+Falta apenas o convenio de pagamento, que sera fornecido pelo Bradesco
+quando o servico Multipag for contratado. Enquanto isso, mantemos o
+placeholder de 20 noves.
+"""
 
 from datetime import datetime
 from gerador_cnab240_bradesco import gerar_cnab240
 
-empresa_teste = {
+# ========== EMPRESA (dados REAIS) ==========
+empresa = {
     "cnpj": "09177564000179",
     "nome_reduzido": "SILVA E SILVA ADVOGADOS ASSOCIADOS",
-    "convenio": "99999999999999999999",  # PLACEHOLDER - substituir pelo convenio real
+    # PLACEHOLDER - Bradesco entrega quando o servico Multipag for contratado
+    # Ver Bradesco Net Empresa > Servicos > Multipag, ou perguntar ao gerente
+    "convenio": "99999999999999999999",
     "agencia": "02149",
     "agencia_dv": "",
     "conta": "000000014339",
     "conta_dv": "1",
     "ag_conta_dv": "",
     "endereco": {
-        "logradouro": "RUA JOAO PESSOA",
-        "numero": 100,
-        "complemento": "SALA 1",
-        "cidade": "FLORIANOPOLIS",
-        "cep": 88010,
+        "logradouro": "RUA 428",
+        "numero": 15,
+        "complemento": "",
+        "bairro": "MORRETES",
+        "cidade": "ITAPEMA",
+        "cep": 88220,        # CEP aproximado, confirmar
         "cep_sufixo": "000",
         "uf": "SC",
     },
 }
 
-# ========== BOLETOS ==========
-boleto1 = {
+# ========== BOLETO REAL (fornecido pela Ana) ==========
+# Digitavel original: 23790.13101 96254.000308 03021.197607 5 15710000010605
+# Decodificado:
+#   Banco: 237 (Bradesco)
+#   Valor: R$ 106,05
+#   Vencimento (fator 1571 base 07/10/1997): 25/01/2002 (data antiga, OK pra teste)
+#   Codigo de barras 44 dig: 23795157100000106050131096254000300302119760
+boleto_real = {
     "forma": "boleto",
-    "favorecido": "FORNECEDOR ALFA LTDA",
-    "cnpj_favorecido": "12345678000199",
-    "codigo_barras": "23791234500000500001234567890123456789012345",
-    "data_vencimento": "2026-09-15",
-    "data_pagamento": "2026-09-15",
-    "valor_titulo": 500.00,
-    "valor_pagamento": 500.00,
-    "seu_numero": "DESP-1001",
+    "favorecido": "BENEFICIARIO DO BOLETO",
+    "cnpj_favorecido": "00000000000000",
+    "codigo_barras": "23795157100000106050131096254000300302119760",
+    "data_vencimento": "2002-01-25",  # extraido do fator de vencimento
+    "data_pagamento": "2026-09-11",   # data de hoje
+    "valor_titulo": 106.05,
+    "valor_pagamento": 106.05,
+    "seu_numero": "DESP-BOLETO-REAL-01",
     "cedente": {
         "tipo_inscricao": 2,
-        "cnpj_cpf": "12345678000199",
-        "nome": "FORNECEDOR ALFA LTDA",
+        "cnpj_cpf": "00000000000000",
+        "nome": "BENEFICIARIO DO BOLETO",
     },
 }
 
-boleto2 = {
+# ========== BOLETO 2 (mesmo do real, valor diferente pra somatoria variada) ==========
+boleto_extra = {
     "forma": "boleto",
-    "favorecido": "SERVICOS BETA ME",
-    "cnpj_favorecido": "98765432000188",
-    "codigo_barras": "23791234500001250009876543210987654321098765",
-    "data_vencimento": "2026-09-16",
-    "data_pagamento": "2026-09-16",
-    "valor_titulo": 1250.00,
-    "valor_pagamento": 1250.00,
-    "seu_numero": "DESP-1002",
+    "favorecido": "FORNECEDOR EXEMPLO LTDA",
+    "cnpj_favorecido": "12345678000199",
+    "codigo_barras": "23795157100000050000131096254000300302119760",
+    "data_vencimento": "2002-01-25",
+    "data_pagamento": "2026-09-11",
+    "valor_titulo": 500.00,
+    "valor_pagamento": 500.00,
+    "seu_numero": "DESP-BOLETO-02",
     "cedente": {
         "tipo_inscricao": 2,
-        "cnpj_cpf": "98765432000188",
-        "nome": "SERVICOS BETA ME",
+        "cnpj_cpf": "12345678000199",
+        "nome": "FORNECEDOR EXEMPLO LTDA",
     },
 }
 
 # ========== PIX ==========
 pix_chave_cnpj = {
     "forma": "pix",
-    "favorecido": "PRESTADOR GAMA LTDA",
+    "favorecido": "PRESTADOR SERVICOS LTDA",
     "cnpj_favorecido": "11222333000144",
     "tipo_inscricao_favorecido": 2,
     "tipo_chave_pix": "cpf_cnpj",
-    "chave_pix": "11222333000144",  # a chave neste caso e o proprio CNPJ
-    "ispb_favorecido": "60746948",  # ISPB do Bradesco (ex.: usar o real do banco do favorecido)
+    "chave_pix": "11222333000144",
+    "ispb_favorecido": "60746948",   # ISPB do Bradesco (exemplo)
     "tipo_conta_favorecido": "01",
-    "data_pagamento": "2026-09-15",
+    "data_pagamento": "2026-09-11",
     "valor_pagamento": 800.00,
-    "seu_numero": "DESP-2001",
+    "seu_numero": "DESP-PIX-01",
     "identificacao_pagamento": "Pagamento servicos setembro",
 }
 
-pix_chave_email = {
-    "forma": "pix",
-    "favorecido": "MARIA SILVA CONSULTORA",
+# ========== TED ==========
+ted = {
+    "forma": "ted",
+    "favorecido": "JOAO DA SILVA CONSULTORIA",
     "cpf_favorecido": "12345678909",
     "tipo_inscricao_favorecido": 1,
-    "tipo_chave_pix": "email",
-    "chave_pix": "maria.silva@example.com",
-    "ispb_favorecido": "00000000",
-    "tipo_conta_favorecido": "01",
-    "data_pagamento": "2026-09-15",
-    "valor_pagamento": 450.00,
-    "seu_numero": "DESP-2002",
-    "identificacao_pagamento": "Consultoria RH",
-}
-
-# ========== TED ==========
-ted1 = {
-    "forma": "ted",
-    "favorecido": "JOAO PEREIRA ADV",
-    "cpf_favorecido": "98765432100",
-    "tipo_inscricao_favorecido": 1,
-    "banco_favorecido": "341",  # Itau
+    "banco_favorecido": "341",       # Itau
     "agencia_favorecido": "01234",
     "agencia_dv_favorecido": "",
     "conta_favorecido": "000000567890",
     "conta_dv_favorecido": "1",
-    "data_pagamento": "2026-09-15",
-    "valor_pagamento": 2000.00,
-    "seu_numero": "DESP-3001",
-    "finalidade_ted": "00003",  # Pagamento a fornecedor
+    "data_pagamento": "2026-09-11",
+    "valor_pagamento": 1500.00,
+    "seu_numero": "DESP-TED-01",
+    "finalidade_ted": "00003",       # pagamento a fornecedor
     "endereco_favorecido": {
         "logradouro": "AV BRASIL",
         "numero": 200,
-        "complemento": "ANDAR 5",
+        "complemento": "SALA 10",
         "bairro": "CENTRO",
         "cidade": "SAO PAULO",
         "cep": 1000,
@@ -117,22 +118,30 @@ ted1 = {
     "mensagem": "Honorarios setembro",
 }
 
-despesas_teste = [boleto1, boleto2, pix_chave_cnpj, pix_chave_email, ted1]
+# ========== GERAR ==========
+despesas = [boleto_real, boleto_extra, pix_chave_cnpj, ted]
 
 arquivo = gerar_cnab240(
-    despesas=despesas_teste,
-    empresa=empresa_teste,
+    despesas=despesas,
+    empresa=empresa,
     nsa=1,
-    data_geracao=datetime(2026, 9, 11, 17, 30, 0),
+    data_geracao=datetime(2026, 9, 11, 18, 0, 0),
 )
 
-nome = "REMESSA_TESTE_BRADESCO_11-09-2026_v4.rem"
+nome = "REMESSA_TESTE_BRADESCO_11-09-2026_v5.rem"
 with open(nome, "w", encoding="latin-1", newline="") as f:
     f.write(arquivo)
 
 print(f"Arquivo gerado: {nome}")
 print(f"Total linhas: {arquivo.count(chr(10))}")
 print(f"Total bytes: {len(arquivo.encode('latin-1'))}")
+print()
+print("=== Resumo do conteudo ===")
+total = sum(float(d['valor_pagamento']) for d in despesas)
+print(f"  Boletos: 2 (R$ {sum(float(d['valor_pagamento']) for d in despesas if d['forma']=='boleto'):.2f})")
+print(f"  PIX: 1 (R$ {sum(float(d['valor_pagamento']) for d in despesas if d['forma']=='pix'):.2f})")
+print(f"  TED: 1 (R$ {sum(float(d['valor_pagamento']) for d in despesas if d['forma']=='ted'):.2f})")
+print(f"  TOTAL: R$ {total:.2f}")
 print()
 print("=== Preview das linhas ===")
 linhas = arquivo.splitlines()
