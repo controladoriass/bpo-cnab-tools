@@ -320,7 +320,7 @@ def monta_segmento_a(
     Caso contrario, e credito em conta Bradesco.
     """
     if is_pix:
-        camara = "000"                 # PIX nao usa camara
+        camara = "009"                 # 009 = SPI (Sistema de Pagamentos Instantaneos, PIX)
         finalidade_ted = brancos(5)    # PIX nao usa finalidade TED
     elif is_ted:
         camara = CAMARA_TED            # 018
@@ -341,8 +341,13 @@ def monta_segmento_a(
     else:
         info2 = alfa(despesa.get("mensagem", ""), 40)
 
-    # Tipo de conta / DV para PIX (dados bancarios) - ainda usa banco/agencia/conta se der
-    banco_fav = despesa.get("banco_favorecido", "0")
+    # Banco do favorecido: pra PIX por chave, quando nao ha dados bancarios,
+    # o Bradesco espera receber 237 (o proprio banco pagador) e o roteamento
+    # e feito pelo Bacen com base na chave.
+    if is_pix and not despesa.get("banco_favorecido"):
+        banco_fav = BANCO_BRADESCO
+    else:
+        banco_fav = despesa.get("banco_favorecido", "0")
     agencia_fav = despesa.get("agencia_favorecido", "0")
     agencia_dv_fav = despesa.get("agencia_dv_favorecido", "")
     conta_fav = despesa.get("conta_favorecido", "0")
