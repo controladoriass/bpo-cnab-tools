@@ -41,8 +41,8 @@ empresa = {
 #   Codigo de barras 44 dig: 23795157100000106050131096254000300302119760
 boleto_real = {
     "forma": "boleto",
-    "favorecido": "BENEFICIARIO DO BOLETO",
-    "cnpj_favorecido": "00000000000000",
+    "favorecido": "BANCO BRADESCO",
+    "cnpj_favorecido": "60746948000112",  # CNPJ do Bradesco (o boleto e do banco 237)
     "codigo_barras": "23795157100000106050131096254000300302119760",
     "data_vencimento": "2002-01-25",  # extraido do fator de vencimento
     "data_pagamento": "2026-09-11",   # data de hoje
@@ -51,26 +51,8 @@ boleto_real = {
     "seu_numero": "DESP-BOLETO-REAL-01",
     "cedente": {
         "tipo_inscricao": 2,
-        "cnpj_cpf": "00000000000000",
-        "nome": "BENEFICIARIO DO BOLETO",
-    },
-}
-
-# ========== BOLETO 2 (mesmo do real, valor diferente pra somatoria variada) ==========
-boleto_extra = {
-    "forma": "boleto",
-    "favorecido": "FORNECEDOR EXEMPLO LTDA",
-    "cnpj_favorecido": "12345678000199",
-    "codigo_barras": "23795157100000050000131096254000300302119760",
-    "data_vencimento": "2002-01-25",
-    "data_pagamento": "2026-09-11",
-    "valor_titulo": 500.00,
-    "valor_pagamento": 500.00,
-    "seu_numero": "DESP-BOLETO-02",
-    "cedente": {
-        "tipo_inscricao": 2,
-        "cnpj_cpf": "12345678000199",
-        "nome": "FORNECEDOR EXEMPLO LTDA",
+        "cnpj_cpf": "60746948000112",
+        "nome": "BANCO BRADESCO",
     },
 }
 
@@ -119,7 +101,7 @@ ted = {
 }
 
 # ========== GERAR ==========
-despesas = [boleto_real, boleto_extra, pix_chave_cnpj, ted]
+despesas = [boleto_real, pix_chave_cnpj, ted]
 
 arquivo = gerar_cnab240(
     despesas=despesas,
@@ -128,7 +110,7 @@ arquivo = gerar_cnab240(
     data_geracao=datetime(2026, 9, 11, 18, 0, 0),
 )
 
-nome = "REMESSA_TESTE_BRADESCO_11-09-2026_v5.rem"
+nome = "REMESSA_TESTE_BRADESCO_11-09-2026_v6.rem"
 with open(nome, "w", encoding="latin-1", newline="") as f:
     f.write(arquivo)
 
@@ -138,9 +120,12 @@ print(f"Total bytes: {len(arquivo.encode('latin-1'))}")
 print()
 print("=== Resumo do conteudo ===")
 total = sum(float(d['valor_pagamento']) for d in despesas)
-print(f"  Boletos: 2 (R$ {sum(float(d['valor_pagamento']) for d in despesas if d['forma']=='boleto'):.2f})")
-print(f"  PIX: 1 (R$ {sum(float(d['valor_pagamento']) for d in despesas if d['forma']=='pix'):.2f})")
-print(f"  TED: 1 (R$ {sum(float(d['valor_pagamento']) for d in despesas if d['forma']=='ted'):.2f})")
+n_bol = sum(1 for d in despesas if d['forma']=='boleto')
+n_pix = sum(1 for d in despesas if d['forma']=='pix')
+n_ted = sum(1 for d in despesas if d['forma']=='ted')
+print(f"  Boletos: {n_bol} (R$ {sum(float(d['valor_pagamento']) for d in despesas if d['forma']=='boleto'):.2f})")
+print(f"  PIX: {n_pix} (R$ {sum(float(d['valor_pagamento']) for d in despesas if d['forma']=='pix'):.2f})")
+print(f"  TED: {n_ted} (R$ {sum(float(d['valor_pagamento']) for d in despesas if d['forma']=='ted'):.2f})")
 print(f"  TOTAL: R$ {total:.2f}")
 print()
 print("=== Preview das linhas ===")
