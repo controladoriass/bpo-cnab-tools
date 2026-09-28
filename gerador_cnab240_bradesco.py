@@ -649,7 +649,8 @@ def monta_trailer_arquivo(qtd_lotes: int, qtd_registros_total: int) -> str:
 # ORQUESTRADOR
 # =====================================================================
 
-def gerar_lote_boletos(empresa: dict, lote: int, despesas: list) -> tuple:
+def gerar_lote_boletos(empresa: dict, lote: int, despesas: list,
+                       forma_lancamento: str = FORMA_TITULO_OUTROS_BANCOS) -> tuple:
     """Gera todas as linhas de um lote de boletos.
     Retorna (linhas, qtd_registros_lote, soma_valores).
     """
@@ -657,7 +658,7 @@ def gerar_lote_boletos(empresa: dict, lote: int, despesas: list) -> tuple:
     linhas.append(monta_header_lote(
         empresa=empresa,
         lote=lote,
-        forma_lancamento=FORMA_TITULO_OUTROS_BANCOS,
+        forma_lancamento=forma_lancamento,
         layout_lote=LAYOUT_LOTE_BOLETO,
     ))
 
@@ -776,10 +777,20 @@ def gerar_cnab240(
 
     linhas = [monta_header_arquivo(empresa, nsa, data_geracao, arquivo_pix=bool(pix))]
 
+    # Boleto emitido pelo proprio Bradesco (codigo de barras comeca com 237)
+    # vai no lote de forma 30 (liquidacao de titulos do proprio banco);
+    # os demais no lote de forma 31 (titulos de outros bancos).
+    boletos_bradesco = [d for d in boletos if str(d["codigo_barras"]).strip()[:3] == BANCO_BRADESCO]
+    boletos_outros = [d for d in boletos if str(d["codigo_barras"]).strip()[:3] != BANCO_BRADESCO]
+
+    lotes = (
+        (boletos_bradesco, lambda e, n, l: gerar_lote_boletos(e, n, l, FORMA_TITULO_MESMO_BANCO)),
+        (boletos_outros, lambda e, n, l: gerar_lote_boletos(e, n, l, FORMA_TITULO_OUTROS_BANCOS)),
+        (pix, gerar_lote_pix),
+        (ted, gerar_lote_ted),
+    )
     lote = 0
-    for lista, gerador in ((boletos, gerar_lote_boletos),
-                           (pix, gerar_lote_pix),
-                           (ted, gerar_lote_ted)):
+    for lista, gerador in lotes:
         if lista:
             lote += 1
             lote_linhas, _, _ = gerador(empresa, lote, lista)
