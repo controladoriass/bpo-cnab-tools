@@ -29,6 +29,7 @@ from typing import Iterable
 # =====================================================================
 
 BANCO_BRADESCO = "237"
+CRLF = chr(13) + chr(10)       # finalizador de linha exigido pelo Multipag
 LINE_LEN = 240
 
 # Tipo de Servico (G025)
@@ -50,6 +51,14 @@ LAYOUT_LOTE_PAGAMENTO = "045"
 # Camara Centralizadora (P001)
 CAMARA_TED = "018"
 CAMARA_CREDITO_CONTA = "000"
+CAMARA_PIX = "009"             # SPI (manual Multipag Pix v5, P001)
+
+# Codigo da Instrucao p/ Movimento (G061), colunas 16-17 dos segmentos A e J.
+# '00' = inclusao liberada (paga sem nova autorizacao)
+# '09' = inclusao bloqueada (fica pendente ate o master autorizar no Net Empresa)
+INSTRUCAO_LIBERADO = "00"
+INSTRUCAO_BLOQUEADO = "09"
+INSTRUCAO_PADRAO = INSTRUCAO_BLOQUEADO
 
 # Finalidade TED (P011)
 FINALIDADE_PAG_FORNECEDOR = "00003"
@@ -93,6 +102,16 @@ def alfa(texto, tamanho: int) -> str:
     t = "".join(c if 32 <= ord(c) < 127 else " " for c in t)
     t = t.ljust(tamanho)[:tamanho]
     return t
+
+
+def alfa_livre(texto, tamanho: int) -> str:
+    """Campo alfanumerico sem forcar maiuscula (chave Pix: e-mail e chave
+    aleatoria sao sensiveis ao formato). Remove acento e caractere nao ASCII."""
+    if texto is None:
+        texto = ""
+    t = _remover_acentos(str(texto)).strip()
+    t = "".join(c if 32 <= ord(c) < 127 else " " for c in t)
+    return t.ljust(tamanho)[:tamanho]
 
 
 def brancos(tamanho: int) -> str:
@@ -145,8 +164,13 @@ def _assert_line(line: str, contexto: str = "linha") -> str:
 # REGISTROS
 # =====================================================================
 
-def monta_header_arquivo(empresa: dict, nsa: int, data_geracao: datetime) -> str:
-    """Header do Arquivo (Tipo 0). Uma linha, 240 caracteres."""
+def monta_header_arquivo(empresa: dict, nsa: int, data_geracao: datetime,
+                         arquivo_pix: bool = False) -> str:
+    """Header do Arquivo (Tipo 0). Uma linha, 240 caracteres.
+
+    arquivo_pix: arquivo so de Pix leva a literal 'PIX' nas posicoes 172-174
+    (G021, manual Multipag Pix v5). Pix vai sempre em arquivo separado.
+    """
     partes = [
         BANCO_BRADESCO,                                       # 1-3
         "0000",                                               # 4-7 lote
@@ -169,7 +193,7 @@ def monta_header_arquivo(empresa: dict, nsa: int, data_geracao: datetime) -> str
         num(nsa, 6),                                          # 158-163 NSA
         "089",                                                # 164-166 versao layout
         "01600",                                              # 167-171 densidade
-        brancos(20),                                          # 172-191 reservado banco
+        alfa("PIX" if arquivo_pix else "", 20),                # 172-191 reservado banco (172-174 = PIX)
         brancos(20),                                          # 192-211 reservado empresa
         brancos(29),                                          # 212-240 uso febraban
     ]
@@ -253,7 +277,7 @@ def monta_segmento_j(
         num(seq, 5),                                          # 9-13
         "J",                                                  # 14 segmento
         "0",                                                  # 15 tipo movimento (inclusao)
-        "00",                                                 # 16-17 codigo instrucao
+        num(despesa.get("instrucao_movimento", INSTRUCAO_PADRAO), 2),  # 16-17 G061
         num(despesa["codigo_barras"], 44),                    # 18-61 codigo de barras
         alfa(despesa["favorecido"], 30),                      # 62-91 nome cedente
         data_ddmmaaaa(despesa.get("data_vencimento")),        # 92-99 vencimento
@@ -320,10 +344,7 @@ def monta_segmento_a(
     Caso contrario, e credito em conta Bradesco.
     """
     if is_pix:
-        # PIX nao usa camara centralizadora explicita.
-        # O manual so documenta 018 (TED/CIP) e 888 (TED via ISPB).
-        # Bradesco espera zeros aqui pra PIX.
-        camara = "000"
+        camara = CAMARA_PIX            # 009 = SPI (manual Pix v5, P001)
         finalidade_ted = brancos(5)    # PIX nao usa finalidade TED
     elif is_ted:
         camara = CAMARA_TED            # 018
@@ -346,28 +367,18 @@ def monta_segmento_a(
         # TED/credito: deixa em branco (mensagem opcional so aparece se explicita)
         info2 = alfa(despesa.get("mensagem", ""), 40)
 
-    # Pra PIX por chave, quando nao ha dados bancarios explicitos,
-    # o Bradesco espera receber os dados da propria empresa pagadora nos
-    # campos de agencia/conta (o roteamento e resolvido pelo Bacen atraves
-    # da chave PIX).
-    if is_pix and not despesa.get("banco_favorecido"):
-        banco_fav = BANCO_BRADESCO
+    # Pix por chave (G100 01 a 04): o roteamento e feito pela chave, os campos
+    # de banco/agencia/conta do favorecido vao zerados. Pix por dados bancarios
+    # (G100 05) e TED/credito levam os dados reais do favorecido.
+    pix_por_chave = is_pix and despesa.get("tipo_chave_pix", "cpf_cnpj") != "dados_bancarios"
+    if pix_por_chave:
+        banco_fav, agencia_fav, agencia_dv_fav, conta_fav, conta_dv_fav = "0", "0", "", "0", ""
     else:
         banco_fav = despesa.get("banco_favorecido", "0")
-
-    # Placeholder pra receber empresa quando is_pix (setado no monta_segmento_a via arg)
-    agencia_fav = despesa.get("agencia_favorecido") or (
-        despesa.get("_empresa_agencia") if is_pix else "0"
-    ) or "0"
-    agencia_dv_fav = despesa.get("agencia_dv_favorecido") or (
-        despesa.get("_empresa_agencia_dv", "") if is_pix else ""
-    ) or ""
-    conta_fav = despesa.get("conta_favorecido") or (
-        despesa.get("_empresa_conta") if is_pix else "0"
-    ) or "0"
-    conta_dv_fav = despesa.get("conta_dv_favorecido") or (
-        despesa.get("_empresa_conta_dv", "") if is_pix else ""
-    ) or ""
+        agencia_fav = despesa.get("agencia_favorecido", "0")
+        agencia_dv_fav = despesa.get("agencia_dv_favorecido", "")
+        conta_fav = despesa.get("conta_favorecido", "0")
+        conta_dv_fav = despesa.get("conta_dv_favorecido", "")
 
     partes = [
         BANCO_BRADESCO,                                    # 1-3
@@ -376,7 +387,7 @@ def monta_segmento_a(
         num(seq, 5),                                       # 9-13
         "A",                                               # 14 segmento
         "0",                                               # 15 tipo movimento (inclusao)
-        "00",                                              # 16-17 codigo instrucao
+        num(despesa.get("instrucao_movimento", INSTRUCAO_PADRAO), 2),  # 16-17 G061
         num(camara, 3),                                    # 18-20 camara centralizadora
         num(banco_fav, 3),                                 # 21-23 banco favorecido
         num(agencia_fav, 5),                               # 24-28 agencia favorecido
@@ -492,12 +503,13 @@ def monta_segmento_b_pix(
     if tipo_chave == "dados_bancarios":
         # tipo de conta nas 2 primeiras posicoes: 01/02/03
         tipo_conta = despesa.get("tipo_conta_favorecido", "01")
-        info12_raw = tipo_conta + " " * 97
+        info12 = alfa(tipo_conta, 99)
+    elif tipo_chave == "cpf_cnpj":
+        # chave CPF/CNPJ ja vai no campo de inscricao (19-32); info 12 em branco
+        info12 = brancos(99)
     else:
-        # chave PIX nas 99 posicoes
-        chave = despesa.get("chave_pix", "")
-        info12_raw = alfa(chave, 99)
-    info12 = info12_raw[:99]
+        # telefone, e-mail ou chave aleatoria, sem forcar maiuscula
+        info12 = alfa_livre(despesa.get("chave_pix", ""), 99)
 
     partes = [
         BANCO_BRADESCO,                                    # 1-3
@@ -665,43 +677,28 @@ def gerar_lote_boletos(empresa: dict, lote: int, despesas: list) -> tuple:
 
 
 def gerar_lote_pix(empresa: dict, lote: int, despesas: list) -> tuple:
-    """Gera todas as linhas de um lote de pagamentos PIX.
+    """Gera um lote de Pix Transferencia (forma 45).
 
-    Manual pag 12: PIX exige 4 segmentos por despesa: A + B + J + J-52.
+    Manual Multipag Pix v5: Pix por chave ou dados bancarios usa Segmento A + B.
+    Os segmentos J e J-52 Pix sao do Pix QR-CODE (forma 47), nao usados aqui.
     """
-    linhas = []
-    linhas.append(monta_header_lote(
+    linhas = [monta_header_lote(
         empresa=empresa,
         lote=lote,
         forma_lancamento=FORMA_PIX_TRANSFERENCIA,
         layout_lote=LAYOUT_LOTE_PAGAMENTO,
-    ))
+    )]
 
     seq = 0
     soma = 0.0
     for d in despesas:
-        # injeta dados da empresa nas despesas PIX pra preencher agencia/conta
-        # no segmento A (o Bradesco exige valores nao-zero mesmo quando pagamento
-        # e por chave).
-        d = {
-            **d,
-            "_empresa_agencia": empresa["agencia"],
-            "_empresa_agencia_dv": empresa.get("agencia_dv", ""),
-            "_empresa_conta": empresa["conta"],
-            "_empresa_conta_dv": empresa.get("conta_dv", ""),
-        }
         seq += 1
         linhas.append(monta_segmento_a(lote, seq, d, is_pix=True))
         seq += 1
         linhas.append(monta_segmento_b_pix(lote, seq, d))
-        seq += 1
-        linhas.append(monta_segmento_j_pix(lote, seq, d))
-        seq += 1
-        linhas.append(monta_segmento_j52_pix(lote, seq, d, empresa))
         soma += float(d["valor_pagamento"])
 
-    # 1 header + 4 detalhes por despesa + 1 trailer
-    qtd_registros = 2 + (4 * len(despesas))
+    qtd_registros = 2 + (2 * len(despesas))
     linhas.append(monta_trailer_lote(lote, qtd_registros, soma))
     return linhas, qtd_registros, soma
 
@@ -738,74 +735,87 @@ def gerar_cnab240(
     empresa: dict,
     nsa: int,
     data_geracao: datetime = None,
+    instrucao_movimento: str = INSTRUCAO_PADRAO,
 ) -> str:
-    """
+    """Gera UM arquivo CNAB 240.
+
+    Regra do Bradesco (manual Multipag Pix v5, G021): Pix vai sempre em arquivo
+    separado das demais formas. Por isso esta funcao recusa lista misturada.
+    Use gerar_remessas() quando a lista tiver Pix junto com boleto/TED.
+
     despesas: lista de dicts. Cada dict deve ter:
       forma: 'boleto' | 'pix' | 'ted'
-      favorecido: nome (str)
-      cnpj_favorecido ou cpf_favorecido: str
-      valor_pagamento: float (em reais)
-      data_pagamento: datetime ou 'AAAA-MM-DD'
-      seu_numero: str (id da despesa no EasyJur)
-      # para BOLETO:
-      codigo_barras: str (44 dig)
-      data_vencimento: datetime ou str
-      valor_titulo: float
-      desconto_abatimento: float (opcional)
-      mora_multa: float (opcional)
-      cedente: dict com tipo_inscricao, cnpj_cpf, nome
+      favorecido, cnpj_favorecido ou cpf_favorecido, valor_pagamento,
+      data_pagamento ('AAAA-MM-DD'), seu_numero (id da despesa no EasyJur,
+      unico: o banco recusa repeticao enquanto o pagamento estiver no sistema)
+      BOLETO: codigo_barras (44 dig), data_vencimento, valor_titulo, cedente
+      PIX: tipo_chave_pix, chave_pix, tipo_inscricao_favorecido
+      TED: banco/agencia/conta do favorecido, endereco_favorecido
 
-    empresa: dict com:
-      cnpj, nome_reduzido, convenio, agencia, agencia_dv,
-      conta, conta_dv, ag_conta_dv, endereco (dict com logradouro,
-      numero, complemento, cidade, cep, cep_sufixo, uf)
+    empresa: cnpj, nome_reduzido, convenio, agencia, agencia_dv, conta,
+      conta_dv, endereco
 
-    nsa: numero sequencial do arquivo (int, incremental)
-    data_geracao: datetime (default: agora)
-
-    Retorna string com o arquivo inteiro (linhas separadas por \\n).
+    instrucao_movimento: '09' (padrao) = pagamento entra BLOQUEADO e so sai
+      depois que o master autoriza no Net Empresa. '00' = entra liberado.
     """
     if data_geracao is None:
         data_geracao = datetime.now()
 
-    linhas = []
-    linhas.append(monta_header_arquivo(empresa, nsa, data_geracao))
-
-    # separar despesas por tipo
     boletos = [d for d in despesas if d.get("forma") == "boleto"]
     pix = [d for d in despesas if d.get("forma") == "pix"]
     ted = [d for d in despesas if d.get("forma") == "ted"]
 
-    qtd_lotes = 0
+    if pix and (boletos or ted):
+        raise ValueError("Pix precisa ir em arquivo separado. Use gerar_remessas().")
+
+    # aplica a instrucao de movimento em todas as despesas (sem alterar o original)
+    def _com_instrucao(lista):
+        return [{**d, "instrucao_movimento": d.get("instrucao_movimento", instrucao_movimento)}
+                for d in lista]
+    boletos, pix, ted = _com_instrucao(boletos), _com_instrucao(pix), _com_instrucao(ted)
+
+    linhas = [monta_header_arquivo(empresa, nsa, data_geracao, arquivo_pix=bool(pix))]
+
     lote = 0
+    for lista, gerador in ((boletos, gerar_lote_boletos),
+                           (pix, gerar_lote_pix),
+                           (ted, gerar_lote_ted)):
+        if lista:
+            lote += 1
+            lote_linhas, _, _ = gerador(empresa, lote, lista)
+            linhas.extend(lote_linhas)
 
-    if boletos:
-        lote += 1
-        qtd_lotes += 1
-        lote_linhas, _, _ = gerar_lote_boletos(empresa, lote, boletos)
-        linhas.extend(lote_linhas)
+    # qtd_registros = todas as linhas + o trailer de arquivo
+    linhas.append(monta_trailer_arquivo(lote, len(linhas) + 1))
 
+    # Bradesco exige CRLF ao final de cada linha.
+    return CRLF.join(linhas) + CRLF
+
+
+def gerar_remessas(
+    despesas: list,
+    empresa: dict,
+    nsa_inicial: int,
+    data_geracao: datetime = None,
+    instrucao_movimento: str = INSTRUCAO_PADRAO,
+) -> dict:
+    """Separa as despesas em ate 2 arquivos e gera cada um:
+      'PAGAMENTOS' -> boletos + TED (um lote por forma)
+      'PIX'        -> so Pix (arquivo exclusivo, header com 'PIX')
+
+    Cada arquivo recebe um NSA proprio (nsa_inicial, nsa_inicial + 1).
+    Retorna {'PAGAMENTOS': str|None, 'PIX': str|None}.
+    """
+    outros = [d for d in despesas if d.get("forma") in ("boleto", "ted")]
+    pix = [d for d in despesas if d.get("forma") == "pix"]
+    resultado = {"PAGAMENTOS": None, "PIX": None}
+    nsa = nsa_inicial
+    if outros:
+        resultado["PAGAMENTOS"] = gerar_cnab240(outros, empresa, nsa, data_geracao, instrucao_movimento)
+        nsa += 1
     if pix:
-        lote += 1
-        qtd_lotes += 1
-        lote_linhas, _, _ = gerar_lote_pix(empresa, lote, pix)
-        linhas.extend(lote_linhas)
-
-    if ted:
-        lote += 1
-        qtd_lotes += 1
-        lote_linhas, _, _ = gerar_lote_ted(empresa, lote, ted)
-        linhas.extend(lote_linhas)
-
-    # trailer do arquivo
-    # qtd_registros = header arquivo (1) + todas linhas de lotes + trailer arquivo (1)
-    # linhas ate agora = 1 (header) + linhas dos lotes
-    qtd_registros_total = len(linhas) + 1  # +1 do trailer que vamos adicionar
-    linhas.append(monta_trailer_arquivo(qtd_lotes, qtd_registros_total))
-
-    # Bradesco exige CRLF ao final de cada linha (Windows line endings).
-    # Sem isso o Multipag reclama "delimitador (finalizador) de linhas nao localizado".
-    return "\r\n".join(linhas) + "\r\n"
+        resultado["PIX"] = gerar_cnab240(pix, empresa, nsa, data_geracao, instrucao_movimento)
+    return resultado
 
 
 # =====================================================================

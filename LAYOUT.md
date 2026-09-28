@@ -31,7 +31,7 @@ Todo arquivo CNAB 240 é uma sequência de linhas de 240 caracteres cada, termin
 
 Um único arquivo pode ter vários lotes, cada lote com um tipo de pagamento. **No nosso caso do BPO,** vamos manter um arquivo por dia com um lote por tipo:
 - Lote 1: Boletos (Segmento J)
-- Lote 2: PIX (Segmento A + B + J-52)
+- Arquivo separado: PIX (Segmento A + B), header do arquivo com 'PIX' nas posições 172-174
 - Lote 3: TED (Segmento A + B)
 
 ---
@@ -81,7 +81,7 @@ Uma linha por lote. **O lote define o tipo de pagamento** através de dois campo
 | **Boleto (outros bancos)** | `20` (Pagamento a Fornecedor) | `31` (Pagamento de Título de Outros Bancos) | `040` |
 | **TED (outra titularidade)** | `20` (Pagamento a Fornecedor) | `41` (TED Outra Titularidade) | `045` |
 | **TED (mesma titularidade)** | `20` (Pagamento a Fornecedor) | `43` (TED Mesma Titularidade) | `045` |
-| **PIX Transferência** | `20` (Pagamento a Fornecedor) | `45` (PIX Transferência) | `045` |
+| **PIX Transferência** (arquivo separado) | `20` (Pagamento a Fornecedor) | `45` (PIX Transferência) | `045` |
 | **PIX QRCode** | `20` (Pagamento a Fornecedor) | `47` (PIX QRCode) | `045` |
 | **Crédito em conta Bradesco** | `20` (Pagamento a Fornecedor) | `01` (Crédito em Conta Corrente) | `045` |
 
@@ -417,3 +417,17 @@ https://banco.bradesco/html/pessoajuridica/solucoes-integradas/outros/layout-de-
 Baixa, instala, abre o `.rem` no validador. Ele aponta erros de posição, tamanho, tipo, campos obrigatórios não preenchidos. Corrigir e reprocessar até sair "arquivo OK".
 
 Só depois de OK no Multipag, o arquivo está pronto pra ir ao Bradesco Net Empresa.
+
+
+---
+
+## Atualização 28/09/2026 (e-mail da implantação + manual Multipag Pix v5)
+
+- Convênio da Silva & Silva: **666228**, gravado alinhado à esquerda no campo 33-52 (o banco lê as posições 33 a 38).
+- Agência 2149-**0**, conta 14339-1.
+- Colunas 16-17 dos segmentos A e J (G061): `00` inclusão liberada, `09` inclusão bloqueada (aguarda o máster no Net Empresa). Padrão do gerador: `09`.
+- Pix vai **sempre em arquivo separado**, com a literal `PIX` nas posições 172-174 do header do arquivo (G021).
+- Pix Transferência (forma 45) usa **Segmento A + B**. Os segmentos J e J-52 Pix são do Pix QR-CODE (forma 47).
+- Câmara centralizadora do Pix: `009` (SPI).
+- Pix por chave (G100 01 a 04): banco, agência e conta do favorecido zerados. Chave telefone, e-mail ou aleatória na Informação 12 (128-226), sem forçar maiúscula. Chave CPF/CNPJ vai só no campo de inscrição (19-32).
+- Número do documento (Seg A 74-93) não pode repetir enquanto o pagamento estiver no sistema do banco.
